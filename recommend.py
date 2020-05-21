@@ -25,6 +25,10 @@ def parse_data():
 			rating = int(rating)
 		train_data.append(ratings)
 
+	for user in train_data:
+		print(user[776])
+
+
 	#train_data = numpy.transpose(train_data)
 	train_file = train_file.replace(".txt", ".data")
 	with open(train_file, "wb") as f:
@@ -37,7 +41,7 @@ def parse_data():
 
 	for test_file in test_files:
 
-		user_ratings = [[]]*200
+		user_ratings = [[]]*100
 
 		movie_ratings = [0]*1000
 
@@ -47,7 +51,7 @@ def parse_data():
 		lines.pop()
 		base_address = int(lines[0].split(' ')[0])
 		prev_user = 0
-
+		#print("test lines:", len(lines))
 		for line in lines:
 
 			ratings = line.split(' ')
@@ -61,8 +65,12 @@ def parse_data():
 					movie_ratings = [0]*1000
 
 				this_movie = int(ratings[1])
+				#print(ratings)
 				this_movie_rating = int(ratings[2])
+				#print("user index=", this_user - base_address)
+				#print("movie index=", this_movie - 1)
 				movie_ratings[this_movie - 1] = this_movie_rating
+				#print("movie_ratings=", movie_ratings)
 				user_ratings[this_user - base_address] = movie_ratings	
 		test_file = test_file.replace(".txt", ".data")
 		with open(test_file, "wb") as f:
@@ -89,7 +97,8 @@ def cosine_similarity(test=5):
 
 	with open(test_file, "rb") as f:
 		test_users = pickle.load(f)
-		similarities = []
+
+	similarities = []
 	# Calculate per test user
 	test_user_id = base_address - 1
 	for test_user in test_users:
@@ -100,12 +109,16 @@ def cosine_similarity(test=5):
 		max_sim_user_id = 0
 		if not test_user:
 			continue
-		# Calculare similarity between this test and each training user
+		#print('test_user',test_user_id, ':')
+		#print(test_user)
+
+		# Calculare similarity between this test user and each training user
 		for training_user in training_users:
 			training_user_id = training_user_id + 1
 
 			training_user = list(map(int, training_user))
 			test_user = list(map(int, test_user))
+
 			if(numpy.linalg.norm(training_user) * numpy.linalg.norm(test_user)) is not 0:
 				this_sim = numpy.dot(training_user, test_user) / (numpy.linalg.norm(training_user) * numpy.linalg.norm(test_user))
 			else:
@@ -130,14 +143,45 @@ def cosine_similarity(test=5):
 					if movie_training_rating is not 0:
 						test_users[test_user_id - base_address][movie_id - 1] = movie_training_rating
 						break
-	print(test_users)
-	print(len(test_users))
 
+				#If no valid ratings exist, just use 3
+				if movie_training_rating is 0:
+					test_users[test_user_id - base_address][movie_id - 1] = 3
+
+
+
+
+	test_file_output = test_file.replace(".data", "_out.txt")
+	test_file_input = test_file.replace(".data", ".txt")
+
+	with open(test_file_input, "r") as f:
+		reference_test_file = f.read()
+
+	reference_lines = reference_test_file.split("\n")
+	reference_lines.pop()
+	line_number = 0
+	output_lines = []
+
+	print("Trouble spot (should be zero):", test_users[4][776])
+
+	for line in reference_lines:
+		line_number += 1
+		line_items = line.split(' ')
+		if int(line_items[2]) is 0:
+			#print("changing line", line_number, "to", reference_lines[line_number - 1].replace(" 0", ' ' + str( test_users[ int(line_items[0]) - base_address ][ int(line_items[1]) - 1 ])))
+			output_lines.append(reference_lines[line_number - 1].replace(" 0", ' ' + str( test_users[ int(line_items[0]) - base_address ][ int(line_items[1]) - 1 ])))
+
+	output = "\n".join(output_lines) + '\n'
+
+	with open(test_file_output, "w+") as f:
+		f.write(output)
 
 
 
 if __name__ == '__main__':
 	parse_data()
-	cosine_similarity()
+	cosine_similarity(5)
+	cosine_similarity(10)
+	cosine_similarity(20)
 
 
