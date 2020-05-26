@@ -136,9 +136,15 @@ def cosine_similarity(test=5):
 						total_sim_value += sim_value
 						predicted_rating += movie_training_rating * sim_value
 
-				#If no valid ratings exist, just use 3
+				#If no valid ratings exist, use average of user's ratings
 				if predicted_rating == 0:
-					test_users[test_user_id - base_address][movie_id - 1] = 3
+					n = 0
+					for rating in test_user:
+						if rating != 0:
+							predicted_rating += rating
+							n += 1
+					predicted_rating = int(round(predicted_rating / n))
+					test_users[test_user_id - base_address][movie_id - 1] = predicted_rating
 				else:
 					#print("User:", test_user_id)
 					#print("Aggregated predicted rating:", predicted_rating)
@@ -193,31 +199,79 @@ def pearson_correlation(test=5):
 	with open(test_file, "rb") as f:
 		test_users = pickle.load(f)
 
-	# Save original values
-	test_users_unadjusted = test_users
-	training_users_unadjusted = training_users
 	# Save average ratings
 	test_users_avg_ratings = []
 	training_users_avg_ratings = []
 
-	# Calculate total average ratings of each user and adjust their ratings
+	# Calculate total average ratings of each user
 	for test_user in test_users:
-		sum_of_ratings = sum(test_user)
-		test_users_avg_ratings.append(sum_of_ratings/len(test_user))
-		for rating in range(0, len(test_user) - 1):
-			test_user[rating] = test_user[rating]/sum_of_ratings
+		n = 0
+		average_rating = 0
+		for rating in test_user:
+			if rating != 0:
+				average_rating += rating
+				n += 1
+		average_rating = average_rating / n
+		test_users_avg_ratings.append(average_rating)
 
 	for training_user in training_users:
-		sum_of_ratings = sum(training_user)
-		training_users_avg_ratings.append(sum_of_ratings/len(training_user))
-		for rating in range(0, len(training_user) - 1):
-			training_user[rating] = training_user[rating]/sum_of_ratings
+		n = 0
+		average_rating = 0
+		for rating in training_user:
+			if rating != 0:
+				average_rating += rating
+				n += 1
+		average_rating = average_rating / n
+		training_users_avg_ratings.append(average_rating)
+
+	#Create list of adjusted ratings
+
+	training_users_adjusted = []
+	training_user_id = 0
+
+	for avg in training_users_avg_ratings:
+		training_user_id += 1
+		adjusted_ratings = []
+
+		for rating in training_users[training_user_id - 1]:
+			adjusted_ratings.append(rating - avg)
+
+		training_users_adjusted.append(adjusted_ratings)
+	
+	test_users_adjusted = []
+	test_user_id = 0
+
+	for avg in test_users_avg_ratings:
+		test_user_id += 1
+		adjusted_ratings = []
+
+		for rating in test_users[test_user_id - 1]:
+			adjusted_ratings.append(rating - avg)
+
+		test_users_adjusted.append(adjusted_ratings)
+
+	#Calculate average adjusted ratings
+	training_users_adjusted_avg_ratings = []
+
+	training_user_id = 0
+	for training_user in training_users_adjusted:
+		training_user_id += 1
+		n = 0
+		average_rating = 0
+		training_rating_id = 0
+		for rating in training_user:
+			training_rating_id += 1
+			if training_users[training_user_id - 1][training_rating_id - 1] != 0:
+				average_rating += rating
+				n += 1
+		average_rating = average_rating / n
+		training_users_adjusted_avg_ratings.append(average_rating)
 
 	similarities = []
 
 	# Calculate per test user
 	test_user_id = base_address - 1
-	for test_user in test_users:
+	for test_user in test_users_adjusted:
 
 		test_user_id = test_user_id + 1
 		training_user_id = 0
@@ -226,11 +280,8 @@ def pearson_correlation(test=5):
 			continue
 
 		# Calculare similarity between this test user and each training user
-		for training_user in training_users:
+		for training_user in training_users_adjusted:
 			training_user_id = training_user_id + 1
-
-			training_user = list(map(int, training_user))
-			test_user = list(map(int, test_user))
 
 			if(numpy.linalg.norm(training_user) * numpy.linalg.norm(test_user)) != 0:
 				this_sim = numpy.dot(training_user, test_user) / (numpy.linalg.norm(training_user) * numpy.linalg.norm(test_user))
@@ -244,27 +295,71 @@ def pearson_correlation(test=5):
 
 		movie_id = 0
 		#Find movies with no rating
-		for rating in test_user:
+		for rating in test_users[test_user_id - base_address]:
 			movie_id = movie_id + 1
 
-			if rating is 0:
-				#Traverse from most similar to least, find first person with a valid rating
+			if rating == 0:
+				predicted_rating = 0
+				sim_value = 0
+				total_sim_value = 0
+
+				#Traverse from most similar to least
 				for similar_user in sorted_sims:
+
 					sim_user_id = similar_user[1]
-					movie_training_rating = int(training_users[sim_user_id - 1][movie_id - 1])
+					sim_value = similar_user[0]
 
-					if movie_training_rating != 0:
-						test_users[test_user_id - base_address][movie_id - 1] = movie_training_rating
-						break
+					if training_users[sim_user_id - 1][movie_id - 1] != 0:
 
-				#If no valid ratings exist, just use 3
-				if movie_training_rating is 0:
-					test_users[test_user_id - base_address][movie_id - 1] = 3
+						movie_training_rating = training_users_adjusted[sim_user_id - 1][movie_id - 1]# - training_users_adjusted_avg_ratings[sim_user_id - 1]
+						total_sim_value += abs(sim_value)
+						predicted_rating += movie_training_rating * sim_value
+				
+				if total_sim_value == 0:
+					print("Using average")
+					test_users[test_user_id - base_address][movie_id - 1] = int(round(predicted_rating))
+				else:
+					predicted_rating = predicted_rating / total_sim_value
+					predicted_rating += training_users_avg_ratings[test_user_id - base_address]
+
+					#print("Calculated predicted_rating:", predicted_rating)
+					if predicted_rating < 1:
+						#print("INVALID PREDICTION:", predicted_rating)
+						predicted_rating = 1
+					if predicted_rating > 5:
+						#print("INVALID PREDICTION:", predicted_rating)
+						predicted_rating = 5
+
+					test_users[test_user_id - base_address][movie_id - 1] = int(round(predicted_rating))
+
+	
+	test_file_output = test_file.replace(".data", "_out.txt")
+	test_file_input = test_file.replace(".data", ".txt")
+
+	with open(test_file_input, "r") as f:
+		reference_test_file = f.read()
+
+	reference_lines = reference_test_file.split("\n")
+	reference_lines.pop()
+	line_number = 0
+	output_lines = []
+
+	for line in reference_lines:
+		line_number += 1
+		line_items = line.split(' ')
+		if int(line_items[2]) is 0:
+			output_lines.append(reference_lines[line_number - 1].replace(" 0", ' ' + str( test_users[ int(line_items[0]) - base_address ][ int(line_items[1]) - 1 ])))
+
+	output = "\n".join(output_lines) + '\n'
+
+	with open(test_file_output, "w+") as f:
+		f.write(output)
 
 if __name__ == '__main__':
 	parse_data()
 	tests = [5, 10, 20]
 	for test in tests:
-		cosine_similarity(test)
+		print("Performing test", test)
+		pearson_correlation(test)
 
 
